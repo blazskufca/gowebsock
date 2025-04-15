@@ -24,11 +24,8 @@ type WebSocket struct {
 }
 
 func NewWebSocketWithUpgrade(w http.ResponseWriter, r *http.Request) (*WebSocket, error) {
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		return nil, errors.New("HTTP handler does not support hijacking")
-	}
-	conn, buf, err := hj.Hijack()
+	rc := http.NewResponseController(w)
+	conn, buf, err := rc.Hijack()
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +48,7 @@ func (ws *WebSocket) Handshake(w http.ResponseWriter, r *http.Request) error {
 	keyOK := wsKey != ""
 	versionOK := wsVersion == "13"
 
-	if upgradeOK && connectionOK && keyOK && versionOK {
+	if !(upgradeOK && connectionOK && keyOK && versionOK) {
 		return errors.New("not a WebSocket UpgradeRequest")
 	}
 
