@@ -39,6 +39,50 @@ const (
 	maskKeySize         int    = 4
 )
 
+type WebSocketStatusCode uint16
+
+const (
+	// NormalClosure indicates a normal closure meaning the purpose for which the connection was established has been fulfilled.
+	NormalClosure WebSocketStatusCode = 1000
+	// GoingAway indicates the endpoint is going away, such as server going down or browser having navigated away from a page
+	GoingAway WebSocketStatusCode = 1001
+	// ProtocolError indicates the endpoint is terminating connection due to protocol error
+	ProtocolError WebSocketStatusCode = 1002
+	// GotUnacceptableData indicates the endpoint is shutting down a connection because it got a type of data it can not accept
+	// such as a TEXT endpoint getting binary data
+	GotUnacceptableData WebSocketStatusCode = 1003
+	// Reserved1004 is a reserved status code for further use
+	Reserved1004 WebSocketStatusCode = 1004
+	// NoStatusCode1005 is a reserved value and MUST NOT be set as a status code in a control frame by an endpoint.
+	// It is designated for use in applications expecting a status code to indicate that the  connection was closed
+	//abnormally, e.g., without sending or receiving a Close control frame.
+	NoStatusCode1005 WebSocketStatusCode = 1005
+	// NoStatusCode1006 is a reserved value and MUST NOT be set as a status code in a  Close control frame by an endpoint.
+	//It is designated for use in applications expecting a status code to indicate that the connection was closed
+	//abnormally, e.g., without sending or receiving a Close control frame.
+	NoStatusCode1006 WebSocketStatusCode = 1006
+	// GotInconsistentData indicates that endpoint is shutting down the connection because it got data which is not
+	// consistent with the expected encoding, i.e. such as non UTF-8 data within a text message
+	GotInconsistentData WebSocketStatusCode = 1007
+	// ViolatesPolicy indicates that the endpoint is shutting down the connection because an endpoint got a message which
+	// violates it's policy. This is a generic status code that can be returned when there is no other more suitable status code
+	ViolatesPolicy WebSocketStatusCode = 1008
+	// MessageTooBig indicates that the endpoint got a message which is too big for it to process
+	MessageTooBig WebSocketStatusCode = 1009
+	// FailedToNegotiateExtensions indicates that an endpoint (client) is terminating the connection because it has
+	// expected the server to negotiate one or more extension, but the server didn't return them in the response message
+	// of the WebSocket handshake.  The list of extensions that are needed SHOULD appear in the /reason/ part of the Close
+	// frame. This WebSocketStatusCode is not used by the Server because it can and should fail the handshake instead.
+	FailedToNegotiateExtensions WebSocketStatusCode = 1010
+	// UnexpectedServerCondition indicates that a server is terminating the connection because it encountered an
+	// unexpected condition that prevented it from fulfilling the request.
+	UnexpectedServerCondition WebSocketStatusCode = 1011
+	// Reserved1015 is a reserved value and MUST NOT be set as a status code in a Close control frame by an endpoint.
+	// It is designated for use in applications expecting a status code to indicate that the connection was closed due
+	// to a failure to perform a TLS handshake (e.g., the server certificate can't be verified).
+	Reserved1015 WebSocketStatusCode = 1015
+)
+
 // Frame represents a WebSocket protocol frame as defined in RFC 6455
 type Frame struct {
 	Fin           bool
@@ -78,13 +122,11 @@ func NewFrame(fin bool, opcode Opcode, payload []byte, mask bool) (*Frame, error
 
 // NewServerFrame creates a frame that's suitable for server-to-client communication (unmasked)
 func NewServerFrame(fin bool, opcode Opcode, payload []byte) (*Frame, error) {
-	// Server-to-client frames MUST NOT be masked per RFC 6455
 	return NewFrame(fin, opcode, payload, false)
 }
 
 // NewClientFrame creates a frame that's suitable for client-to-server communication (masked)
 func NewClientFrame(fin bool, opcode Opcode, payload []byte) (*Frame, error) {
-	// Client-to-server frames MUST be masked per RFC 6455
 	return NewFrame(fin, opcode, payload, true)
 }
 

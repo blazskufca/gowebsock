@@ -14,85 +14,188 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	ws, err := internal.NewWebSocketWithUpgrade(w, r)
 	if err != nil {
 		log.Printf("WebSocket upgrade failed: %v", err)
+		http.Error(w, "WebSocket upgrade failed", http.StatusBadRequest)
 		return
 	}
 
 	log.Printf("New WebSocket connection established")
-
-	welcomeMsg := []byte("Welcome to the WebSocket Echo Server!")
-	welcomeFrame, _ := internal.NewServerFrame(true, internal.OpText, welcomeMsg)
-	welcomeData := welcomeFrame.EncodeFrame()
-	_, err = ws.Conn.Write(welcomeData)
+	err = ws.WriteTextMessage("Welcome to the WebSocket echo server!")
 	if err != nil {
-		log.Printf("Error sending welcome message: %v", err)
-	} else {
-		log.Println("Sent welcome message to client")
+		http.Error(w, "WebSocket write failed", http.StatusBadRequest)
 	}
+	log.Println("Sent welcome message to client")
 
 	for {
 		log.Println("Waiting for frame from client...")
 
-		frame, err := internal.DecodeFrame(ws.Conn)
+		t, frame, err := ws.ReadMessage()
 		if err != nil {
-			log.Printf("Error reading frame: %v", err)
-			break
+			log.Printf("Error reading message: %v", err)
 		}
-
-		log.Printf("Received frame - OpCode: %v, Length: %d, Masked: %v",
-			frame.OpCode, frame.PayloadLength, frame.Masked)
-
-		if frame.OpCode == internal.OpClose {
-			log.Println("Received close frame, closing connection")
-			closeFrame, _ := internal.NewServerFrame(true, internal.OpClose, frame.PayloadData)
-			closeFrameData := closeFrame.EncodeFrame()
-			_, _ = ws.Conn.Write(closeFrameData)
-			break
-		}
-
-		if frame.OpCode == internal.OpPing {
-			log.Println("Received ping frame, sending pong")
-			pongFrame, _ := internal.NewServerFrame(true, internal.OpPong, frame.PayloadData)
-			pongFrameData := pongFrame.EncodeFrame()
-			_, err = ws.Conn.Write(pongFrameData)
+		log.Println("Received frame from client...")
+		switch t {
+		case internal.OpText:
+			log.Println("Received op text")
+			fmt.Println(string(frame))
+			err = ws.WriteTextMessage(string(frame))
 			if err != nil {
-				log.Printf("Error sending pong: %v", err)
-				break
+				log.Printf("Error writing text: %v", err)
+				continue
 			}
-			continue
-		}
-
-		if frame.IsData() {
-			if frame.OpCode == internal.OpText {
-				log.Printf("Echoing text data: %s", string(frame.PayloadData))
-			} else {
-				log.Printf("Echoing %d bytes of binary data", len(frame.PayloadData))
-			}
-
-			responseFrame, _ := internal.NewServerFrame(true, frame.OpCode, frame.PayloadData)
-			responseFrameData := responseFrame.EncodeFrame()
-
-			_, err = ws.Conn.Write(responseFrameData)
+		case internal.OpBinary:
+			log.Println("Received op binary")
+			fmt.Println(frame)
+			err = ws.WriteBinaryMessage(frame)
 			if err != nil {
-				log.Printf("Error echoing data: %v", err)
-				break
-			} else {
-				log.Println("Successfully sent echo response")
+				log.Printf("Error writing text: %v", err)
+				continue
 			}
+		case internal.OpClose:
+			log.Println("Received op close")
+			return
 		}
+
 	}
 
-	_ = ws.Conn.Close()
+	// Clean up connection if loop exits abnormally
+	_ = ws.CloseWithCode(internal.GoingAway, "Closed loop")
 	log.Println("WebSocket connection closed")
 }
 
 func main() {
 	http.HandleFunc("/echo", WebSocketHandler)
 
+	// Also serve a simple HTML page for easy testing
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(testClientHTML))
+	})
+
 	port := 8080
 	fmt.Printf("WebSocket Echo Server started on port %d\n", port)
-	fmt.Printf("Connect to ws://localhost:%d/echo\n", port)
+	fmt.Printf("For testing, visit http://localhost:%d\n", port)
+	fmt.Printf("WebSocket endpoint: ws://localhost:%d/echo\n", port)
 
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
+
+// Simple HTML page for testing the WebSocket server
+const testClientHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Echo Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #output { width: 100%; height: 300px; overflow-y: scroll; border: 1px solid #ccc; margin-bottom: 10px; padding: 10px; }
+        #input { width: 80%; padding: 8px; }
+        button { padding: 8px 15px; }
+        .log { margin: 5px 0; }
+        .received { color: blue; }
+        .sent { color: green; }
+        .system { color: gray; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Echo Test</h1>
+    <div id="output"></div>
+    <input id="input" type="text" placeholder="Type a message...">
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="sendBinary()">Send Binary</button>
+    <button onclick="sendPing()">Send Ping</button>
+    <button onclick="closeConnection()">Close</button>
+
+    <script>
+        var ws;
+        var connected = false;
+
+        function init() {
+            log("system", "Connecting to WebSocket server...");
+            ws = new WebSocket("ws://" + window.location.hostname + ":8080/echo");
+            
+            ws.onopen = function(e) {
+                log("system", "Connection established!");
+                connected = true;
+            };
+            
+            ws.onmessage = function(e) {
+                log("received", "Received: " + e.data);
+            };
+            
+            ws.onclose = function(e) {
+                log("system", "Connection closed (code: " + e.code + ", reason: " + e.reason + ")");
+                connected = false;
+            };
+            
+            ws.onerror = function(e) {
+                log("error", "Error: " + e.message);
+            };
+        }
+        
+        function sendMessage() {
+            if (!connected) {
+                log("error", "Not connected!");
+                return;
+            }
+            var message = document.getElementById("input").value;
+            ws.send(message);
+            log("sent", "Sent: " + message);
+            document.getElementById("input").value = "";
+        }
+        
+        function sendBinary() {
+            if (!connected) {
+                log("error", "Not connected!");
+                return;
+            }
+            // Create a simple binary message
+            var buffer = new ArrayBuffer(4);
+            var view = new Uint8Array(buffer);
+            view[0] = 0xDE;
+            view[1] = 0xAD;
+            view[2] = 0xBE;
+            view[3] = 0xEF;
+            ws.send(buffer);
+            log("sent", "Sent binary data: 0xDEADBEEF");
+        }
+        
+        function sendPing() {
+            if (!connected) {
+                log("error", "Not connected!");
+                return;
+            }
+            // Note: The WebSocket API doesn't directly expose ping/pong,
+            // but this would trigger it in our server for testing
+            log("system", "Browser WebSocket API doesn't support direct ping control");
+        }
+        
+        function closeConnection() {
+            if (!connected) {
+                log("error", "Not connected!");
+                return;
+            }
+            ws.close(1000, "Client closing connection");
+            log("system", "Closing connection...");
+        }
+        
+        function log(type, message) {
+            var output = document.getElementById("output");
+            var entry = document.createElement("div");
+            entry.className = "log " + type;
+            entry.textContent = message;
+            output.appendChild(entry);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        window.onload = init;
+    </script>
+</body>
+</html>
+`
