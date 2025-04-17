@@ -213,7 +213,7 @@ func (f *Frame) EncodeFrame() []byte {
 func DecodeFrame(r io.Reader) (*Frame, error) {
 	header := make([]byte, minimalHeaderSize)
 
-	if n, err := r.Read(header); err != nil || n != minimalHeaderSize {
+	if n, err := io.ReadFull(r, header); err != nil || n != minimalHeaderSize {
 		switch err {
 		case nil:
 			return nil, fmt.Errorf("invalid header size %v expected %v", n, minimalHeaderSize)

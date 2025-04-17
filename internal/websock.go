@@ -7,14 +7,16 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
 const (
-	websocketGUID                  string = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+	websocketGUID                  string = `258EAFA5-E914-47DA-95CA-C5AB0DC85B11`
 	switchingProtocolsResponseLine string = "HTTP/1.1 101 Switching Protocols\r\n"
 )
 
@@ -27,6 +29,12 @@ type WebSocket struct {
 
 func NewWebSocketWithUpgrade(w http.ResponseWriter, r *http.Request) (*WebSocket, error) {
 	rc := http.NewResponseController(w)
+	if err := rc.SetReadDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
+	if err := rc.SetReadDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
 	conn, buf, err := rc.Hijack()
 	if err != nil {
 		return nil, err
@@ -36,10 +44,10 @@ func NewWebSocketWithUpgrade(w http.ResponseWriter, r *http.Request) (*WebSocket
 		buff:   buf,
 		header: r.Header,
 	}
-	return ws, ws.Handshake(w, r)
+	return ws, ws.Handshake(r)
 }
 
-func (ws *WebSocket) Handshake(w http.ResponseWriter, r *http.Request) error {
+func (ws *WebSocket) Handshake(r *http.Request) error {
 	upgrade := strings.ToLower(strings.TrimSpace(r.Header.Get("Upgrade")))
 	connection := strings.ToLower(strings.TrimSpace(r.Header.Get("Connection")))
 	wsKey := strings.TrimSpace(r.Header.Get("Sec-WebSocket-Key"))
@@ -77,6 +85,7 @@ func (ws *WebSocket) Handshake(w http.ResponseWriter, r *http.Request) error {
 		"Upgrade":               []string{"websocket"},
 		"Connection":            []string{"Upgrade"},
 		"Sec-WebSocket-Version": []string{"13"},
+		"Server":                []string{"GoWebSock"},
 	}
 	err = respHeader.Write(ws.buff)
 	if err != nil {
@@ -97,7 +106,8 @@ func (ws *WebSocket) WriteFrames(frames []*Frame) error {
 			return err
 		}
 	}
-	if err := ws.buff.Flush(); err != nil {
+	err := ws.buff.Flush()
+	if err != nil {
 		return err
 	}
 	return nil
@@ -153,8 +163,7 @@ func (ws *WebSocket) WritePongMessage(pingFrame *Frame) error {
 	if pingFrame == nil {
 		return errors.New("ping frame is nil")
 	}
-
-	pongFrame, err := pingFrame.CreatePongFrame(false)
+	pongFrame, err := NewServerFrame(true, OpPong, pingFrame.PayloadData)
 	if err != nil {
 		return err
 	}
@@ -164,7 +173,7 @@ func (ws *WebSocket) WritePongMessage(pingFrame *Frame) error {
 
 // ReadFrame reads a single WebSocket frame from the connection
 func (ws *WebSocket) ReadFrame() (*Frame, error) {
-	return DecodeFrame(ws.Conn)
+	return DecodeFrame(ws.buff)
 }
 
 // ValidateClientFrame validates that a frame from a client follows the WebSocket protocol
@@ -178,14 +187,15 @@ func (ws *WebSocket) ValidateClientFrame(fr *Frame) error {
 		return errors.New("protocol error: unmasked client frame")
 	}
 
-	if fr.IsControl() && (fr.PayloadLength > 125 || !fr.Fin) {
+	if fr.IsControl() && (fr.PayloadLength > payloadLen125OrLess || !fr.Fin) {
 		ws.status = ProtocolError
 		return errors.New("protocol error: all control frames MUST have a payload length of 125 bytes or less and MUST NOT be fragmented")
 	}
 
-	if fr.OpCode > 0xA {
+	if fr.OpCode > OpPong || (fr.OpCode > OpBinary && fr.OpCode < OpClose) {
 		ws.status = ProtocolError
-		return errors.New(fmt.Sprintf("protocol error: opcode %x is reserved", fr.OpCode))
+		log.Printf("Detected invalid opcode: %x", fr.OpCode)
+		return fmt.Errorf("protocol error: opcode %x is reserved or invalid", fr.OpCode)
 	}
 
 	if fr.Rsv1 || fr.Rsv2 || fr.Rsv3 {
@@ -193,19 +203,13 @@ func (ws *WebSocket) ValidateClientFrame(fr *Frame) error {
 		return errors.New("protocol error: RSV bits must be 0")
 	}
 
-	if fr.OpCode == OpText && !fr.Fin && !utf8.Valid(fr.PayloadData) {
-		ws.status = GotInconsistentData
-		return errors.New("invalid UTF-8 in text message")
-	}
-
 	if fr.OpCode == OpClose {
 		if fr.PayloadLength >= 2 {
 			code := binary.BigEndian.Uint16(fr.PayloadData[:2])
-			if code < 1000 || (code >= 1004 && code <= 1006) || (code >= 1012 && code <= 1014) || code >= 5000 {
+			if code < 1000 || (code >= 1004 && code <= 1006) || (code >= 1012 && code <= 2999) {
 				ws.status = ProtocolError
-				return errors.New("protocol error: invalid close code")
+				return fmt.Errorf("protocol error: invalid close code %d", code)
 			}
-
 			if fr.PayloadLength > 2 && !utf8.Valid(fr.PayloadData[2:]) {
 				ws.status = GotInconsistentData
 				return errors.New("invalid UTF-8 in close reason")
@@ -257,22 +261,29 @@ func (ws *WebSocket) Write(p []byte) (int, error) {
 func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) {
 	var payload []byte
 	var firstOpCode Opcode
+	var inFragmentedMessage bool
 
 	for {
 		frame, err := ws.ReadFrame()
 		if err != nil {
 			return 0, nil, err
 		}
+		if err := ws.ValidateClientFrame(frame); err != nil {
+			return 0, nil, err
+		}
+
 		if frame.IsControl() {
 			switch frame.OpCode {
 			case OpClose:
 				code, reason, _ := frame.ReadCloseFrame()
+				if code == 0 {
+					code = NormalClosure
+				}
 				closeErr := ws.WriteCloseMessage(code, reason)
 				if closeErr != nil {
 					return 0, nil, closeErr
 				}
-				return OpClose, nil, errors.New("received close frame")
-
+				return OpClose, nil, nil
 			case OpPing:
 				pongErr := ws.WritePongMessage(frame)
 				if pongErr != nil {
@@ -280,21 +291,35 @@ func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) 
 				}
 				continue
 			case OpPong:
-				return OpPong, frame.PayloadData, nil
+				continue
 			}
 		}
 
-		if frame.IsData() {
-			if frame.OpCode != OpContinuation {
-				firstOpCode = frame.OpCode
-				payload = append(payload, frame.PayloadData...)
-			} else {
-				payload = append(payload, frame.PayloadData...)
+		if frame.OpCode == OpContinuation {
+			if !inFragmentedMessage {
+				return 0, nil, fmt.Errorf("protocol error: continuation frame without preceding data frame")
 			}
+			payload = append(payload, frame.PayloadData...)
+		} else {
+			if inFragmentedMessage {
+				return 0, nil, fmt.Errorf("protocol error: new data frame received while in fragmented message")
+			}
+			if frame.OpCode != OpText && frame.OpCode != OpBinary {
+				return 0, nil, fmt.Errorf("protocol error: invalid data frame opcode %v", frame.OpCode)
+			}
+			firstOpCode = frame.OpCode
+			payload = frame.PayloadData
+			inFragmentedMessage = !frame.Fin
+		}
 
-			if frame.Fin {
-				return firstOpCode, payload, nil
+		if frame.Fin {
+			if firstOpCode == 0 {
+				return 0, nil, fmt.Errorf("protocol error: no initial data frame for continuation")
 			}
+			if firstOpCode == OpText && !utf8.Valid(payload) {
+				return 0, nil, fmt.Errorf("protocol error: invalid UTF-8 in complete text message")
+			}
+			return firstOpCode, payload, nil
 		}
 	}
 }
