@@ -62,7 +62,7 @@ func FragmentedFrames(data []byte, maxFrameSize int, opcode Opcode, isServer boo
 		frameOpcode := opcode
 
 		if i > 0 {
-			// All continuation frames use OpContinuation
+
 			frameOpcode = OpContinuation
 		}
 

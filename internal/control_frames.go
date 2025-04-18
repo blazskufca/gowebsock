@@ -24,6 +24,9 @@ func NewCloseFrame(code WebSocketStatusCode, reason string, isServer bool) (*Fra
 	binary.BigEndian.PutUint16(payload, uint16(code))
 
 	if reason != "" {
+		if !utf8.ValidString(reason) {
+			return nil, errors.New("invalid UTF-8 in close reason")
+		}
 		copy(payload[uint16ByteLen:], []byte(reason))
 	}
 

@@ -29,7 +29,7 @@ type WebSocket struct {
 
 func NewWebSocketWithUpgrade(w http.ResponseWriter, r *http.Request) (*WebSocket, error) {
 	rc := http.NewResponseController(w)
-	if err := rc.SetReadDeadline(time.Time{}); err != nil {
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
 		return nil, err
 	}
 	if err := rc.SetReadDeadline(time.Time{}); err != nil {
@@ -39,10 +39,17 @@ func NewWebSocketWithUpgrade(w http.ResponseWriter, r *http.Request) (*WebSocket
 	if err != nil {
 		return nil, err
 	}
+	if err = conn.SetWriteDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
+	if err = conn.SetReadDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
 	ws := &WebSocket{
 		Conn:   conn,
 		buff:   buf,
 		header: r.Header,
+		status: NormalClosure,
 	}
 	return ws, ws.Handshake(r)
 }
@@ -62,19 +69,13 @@ func (ws *WebSocket) Handshake(r *http.Request) error {
 		return errors.New("not a WebSocket UpgradeRequest")
 	}
 
-	var wsk string
-
-	if wsk = strings.TrimSpace(ws.header.Get("Sec-WebSocket-Key")); wsk == "" {
-		return errors.New("no Sec-WebSocket-Key")
-	}
-
 	extensions := ws.header.Get("Sec-WebSocket-Extensions")
 	if extensions != "" {
-		fmt.Printf("Client requested extensions: %s, but none are supported\n", extensions)
+		log.Printf("Client requested extensions: %s, but none are supported", extensions)
 	}
 
 	sha1Hash := sha1.New()
-	sha1Hash.Write([]byte(wsk))
+	sha1Hash.Write([]byte(wsKey))
 	sha1Hash.Write([]byte(websocketGUID))
 	_, err := ws.buff.WriteString(switchingProtocolsResponseLine)
 	if err != nil {
@@ -98,7 +99,7 @@ func (ws *WebSocket) Handshake(r *http.Request) error {
 	return ws.buff.Flush()
 }
 
-// WriteFramesFragmented encodes and writes a sequence of frames to a writer
+// WriteFrames encodes and writes a sequence of frames
 func (ws *WebSocket) WriteFrames(frames []*Frame) error {
 	for _, frame := range frames {
 		encoded := frame.EncodeFrame()
@@ -106,14 +107,10 @@ func (ws *WebSocket) WriteFrames(frames []*Frame) error {
 			return err
 		}
 	}
-	err := ws.buff.Flush()
-	if err != nil {
-		return err
-	}
-	return nil
+	return ws.buff.Flush()
 }
 
-// WriteTextMessage is a convenience method to send a text message
+// WriteTextMessage sends a text message
 func (ws *WebSocket) WriteTextMessage(message string) error {
 	frame, err := TextFrame(message, true)
 	if err != nil {
@@ -122,7 +119,7 @@ func (ws *WebSocket) WriteTextMessage(message string) error {
 	return ws.WriteFrames([]*Frame{frame})
 }
 
-// WriteBinaryMessage is a convenience method to send a binary message
+// WriteBinaryMessage sends a binary message
 func (ws *WebSocket) WriteBinaryMessage(data []byte) error {
 	frame, err := BinaryFrame(data, true)
 	if err != nil {
@@ -131,7 +128,7 @@ func (ws *WebSocket) WriteBinaryMessage(data []byte) error {
 	return ws.WriteFrames([]*Frame{frame})
 }
 
-// WriteFragmentedMessage breaks a large message into multiple frames
+// WriteFragmentedMessage sends a fragmented message
 func (ws *WebSocket) WriteFragmentedMessage(data []byte, maxFrameSize int, opcode Opcode) error {
 	frames, err := FragmentedFrames(data, maxFrameSize, opcode, true)
 	if err != nil {
@@ -140,7 +137,7 @@ func (ws *WebSocket) WriteFragmentedMessage(data []byte, maxFrameSize int, opcod
 	return ws.WriteFrames(frames)
 }
 
-// WriteCloseMessage sends a close frame with the specified status code and reason
+// WriteCloseMessage sends a close frame
 func (ws *WebSocket) WriteCloseMessage(code WebSocketStatusCode, reason string) error {
 	frame, err := NewCloseFrame(code, reason, true)
 	if err != nil {
@@ -149,7 +146,7 @@ func (ws *WebSocket) WriteCloseMessage(code WebSocketStatusCode, reason string) 
 	return ws.WriteFrames([]*Frame{frame})
 }
 
-// WritePingMessage sends a ping frame with the specified application data
+// WritePingMessage sends a ping frame
 func (ws *WebSocket) WritePingMessage(applicationData string) error {
 	frame, err := NewPingFrame(applicationData, false)
 	if err != nil {
@@ -167,18 +164,18 @@ func (ws *WebSocket) WritePongMessage(pingFrame *Frame) error {
 	if err != nil {
 		return err
 	}
-
 	return ws.WriteFrames([]*Frame{pongFrame})
 }
 
-// ReadFrame reads a single WebSocket frame from the connection
+// ReadFrame reads a single WebSocket frame
 func (ws *WebSocket) ReadFrame() (*Frame, error) {
 	return DecodeFrame(ws.buff)
 }
 
-// ValidateClientFrame validates that a frame from a client follows the WebSocket protocol
+// ValidateClientFrame validates a client frame per RFC 6455
 func (ws *WebSocket) ValidateClientFrame(fr *Frame) error {
 	if fr == nil {
+		ws.status = ProtocolError
 		return errors.New("frame is nil")
 	}
 
@@ -189,7 +186,7 @@ func (ws *WebSocket) ValidateClientFrame(fr *Frame) error {
 
 	if fr.IsControl() && (fr.PayloadLength > payloadLen125OrLess || !fr.Fin) {
 		ws.status = ProtocolError
-		return errors.New("protocol error: all control frames MUST have a payload length of 125 bytes or less and MUST NOT be fragmented")
+		return errors.New("protocol error: control frames must have payload length <= 125 bytes and must not be fragmented")
 	}
 
 	if fr.OpCode > OpPong || (fr.OpCode > OpBinary && fr.OpCode < OpClose) {
@@ -212,7 +209,7 @@ func (ws *WebSocket) ValidateClientFrame(fr *Frame) error {
 			}
 			if fr.PayloadLength > 2 && !utf8.Valid(fr.PayloadData[2:]) {
 				ws.status = GotInconsistentData
-				return errors.New("invalid UTF-8 in close reason")
+				return errors.New("protocol error: invalid UTF-8 in close reason")
 			}
 		} else if fr.PayloadLength == 1 {
 			ws.status = ProtocolError
@@ -223,30 +220,33 @@ func (ws *WebSocket) ValidateClientFrame(fr *Frame) error {
 	return nil
 }
 
-// Close closes the WebSocket connection gracefully
+// Close closes the connection gracefully
 func (ws *WebSocket) Close() error {
-	// Send close frame with the current status
-	closeFrame, _ := NewCloseFrame(ws.status, "", true)
-	_ = ws.WriteFrames([]*Frame{closeFrame})
-
+	err := ws.WriteCloseMessage(ws.status, "")
+	if err != nil {
+		_ = ws.Conn.Close()
+		return err
+	}
 	return ws.Conn.Close()
 }
 
-// CloseWithCode closes the WebSocket connection with a specific status code and reason
+// CloseWithCode closes the connection with a specific status code and reason
 func (ws *WebSocket) CloseWithCode(statusCode WebSocketStatusCode, reason string) error {
 	ws.status = statusCode
-	closeFrame, _ := NewCloseFrame(statusCode, reason, true)
-	_ = ws.WriteFrames([]*Frame{closeFrame})
-
+	err := ws.WriteCloseMessage(statusCode, reason)
+	if err != nil {
+		ws.Conn.Close()
+		return err
+	}
 	return ws.Conn.Close()
 }
 
-// Read implements io.Reader for direct reading
+// Read implements io.Reader
 func (ws *WebSocket) Read(p []byte) (int, error) {
 	return ws.Conn.Read(p)
 }
 
-// Write implements io.Writer for direct writing
+// Write implements io.Writer
 func (ws *WebSocket) Write(p []byte) (int, error) {
 	n, err := ws.buff.Write(p)
 	if err != nil {
@@ -256,9 +256,9 @@ func (ws *WebSocket) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// ReadMessage is a high-level method that reads a message from the connection
-// It handles control frames internally and returns application data frames
+// ReadMessage reads a complete message, handling control frames and errors
 func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) {
+	defer ws.buff.Flush()
 	var payload []byte
 	var firstOpCode Opcode
 	var inFragmentedMessage bool
@@ -266,9 +266,23 @@ func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) 
 	for {
 		frame, err := ws.ReadFrame()
 		if err != nil {
+			ws.status = ProtocolError
+			closeErr := ws.WriteCloseMessage(ProtocolError, "error reading frame")
+			if closeErr != nil {
+				_ = ws.Conn.Close()
+				return 0, nil, closeErr
+			}
+			_ = ws.Conn.Close()
 			return 0, nil, err
 		}
+
 		if err := ws.ValidateClientFrame(frame); err != nil {
+			closeErr := ws.WriteCloseMessage(ws.status, err.Error())
+			if closeErr != nil {
+				_ = ws.Conn.Close()
+				return 0, nil, closeErr
+			}
+			_ = ws.Conn.Close()
 			return 0, nil, err
 		}
 
@@ -281,12 +295,21 @@ func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) 
 				}
 				closeErr := ws.WriteCloseMessage(code, reason)
 				if closeErr != nil {
+					_ = ws.Conn.Close()
 					return 0, nil, closeErr
 				}
+				_ = ws.Conn.Close()
 				return OpClose, nil, nil
 			case OpPing:
 				pongErr := ws.WritePongMessage(frame)
 				if pongErr != nil {
+					ws.status = ProtocolError
+					closeErr := ws.WriteCloseMessage(ProtocolError, "error sending pong")
+					if closeErr != nil {
+						_ = ws.Conn.Close()
+						return 0, nil, closeErr
+					}
+					_ = ws.Conn.Close()
 					return 0, nil, pongErr
 				}
 				continue
@@ -297,14 +320,35 @@ func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) 
 
 		if frame.OpCode == OpContinuation {
 			if !inFragmentedMessage {
+				ws.status = ProtocolError
+				closeErr := ws.WriteCloseMessage(ProtocolError, "continuation frame without preceding data frame")
+				if closeErr != nil {
+					_ = ws.Conn.Close()
+					return 0, nil, closeErr
+				}
+				_ = ws.Conn.Close()
 				return 0, nil, fmt.Errorf("protocol error: continuation frame without preceding data frame")
 			}
 			payload = append(payload, frame.PayloadData...)
 		} else {
 			if inFragmentedMessage {
+				ws.status = ProtocolError
+				closeErr := ws.WriteCloseMessage(ProtocolError, "new data frame received while in fragmented message")
+				if closeErr != nil {
+					_ = ws.Conn.Close()
+					return 0, nil, closeErr
+				}
+				_ = ws.Conn.Close()
 				return 0, nil, fmt.Errorf("protocol error: new data frame received while in fragmented message")
 			}
 			if frame.OpCode != OpText && frame.OpCode != OpBinary {
+				ws.status = ProtocolError
+				closeErr := ws.WriteCloseMessage(ProtocolError, fmt.Sprintf("invalid data frame opcode %v", frame.OpCode))
+				if closeErr != nil {
+					_ = ws.Conn.Close()
+					return 0, nil, closeErr
+				}
+				_ = ws.Conn.Close()
 				return 0, nil, fmt.Errorf("protocol error: invalid data frame opcode %v", frame.OpCode)
 			}
 			firstOpCode = frame.OpCode
@@ -314,9 +358,23 @@ func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) 
 
 		if frame.Fin {
 			if firstOpCode == 0 {
+				ws.status = ProtocolError
+				closeErr := ws.WriteCloseMessage(ProtocolError, "no initial data frame for continuation")
+				if closeErr != nil {
+					_ = ws.Conn.Close()
+					return 0, nil, closeErr
+				}
+				_ = ws.Conn.Close()
 				return 0, nil, fmt.Errorf("protocol error: no initial data frame for continuation")
 			}
 			if firstOpCode == OpText && !utf8.Valid(payload) {
+				ws.status = GotInconsistentData
+				closeErr := ws.WriteCloseMessage(GotInconsistentData, "invalid UTF-8 in text message")
+				if closeErr != nil {
+					_ = ws.Conn.Close()
+					return 0, nil, closeErr
+				}
+				_ = ws.Conn.Close()
 				return 0, nil, fmt.Errorf("protocol error: invalid UTF-8 in complete text message")
 			}
 			return firstOpCode, payload, nil
@@ -324,35 +382,26 @@ func (ws *WebSocket) ReadMessage() (messageType Opcode, data []byte, err error) 
 	}
 }
 
-// ReadTextMessage reads a complete text message (possibly across multiple frames)
-// It returns an error if the message contains invalid UTF-8
+// ReadTextMessage reads a complete text message
 func (ws *WebSocket) ReadTextMessage() (string, error) {
 	messageType, data, err := ws.ReadMessage()
 	if err != nil {
 		return "", err
 	}
-
 	if messageType != OpText {
 		return "", errors.New("received a non-text message")
 	}
-
-	if !utf8.Valid(data) {
-		return "", errors.New("received text message contains invalid UTF-8")
-	}
-
 	return string(data), nil
 }
 
-// ReadBinaryMessage reads a complete binary message (possibly across multiple frames)
+// ReadBinaryMessage reads a complete binary message
 func (ws *WebSocket) ReadBinaryMessage() ([]byte, error) {
 	messageType, data, err := ws.ReadMessage()
 	if err != nil {
 		return nil, err
 	}
-
 	if messageType != OpBinary {
 		return nil, errors.New("received a non-binary message")
 	}
-
 	return data, nil
 }

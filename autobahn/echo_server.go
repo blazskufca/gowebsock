@@ -19,32 +19,28 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for {
-		t, frame, err := ws.ReadMessage()
-		if err != nil {
-			_ = ws.WriteCloseMessage(internal.ProtocolError, err.Error())
+		t, frame, re := ws.ReadMessage()
+		if re != nil {
+			log.Printf("WebSocket read failed: %v", re)
 			return
 		}
 
 		switch t {
 		case internal.OpText:
 			log.Println("Received op text")
+			log.Println(frame)
 			err = ws.WriteTextMessage(string(frame))
 			if err != nil {
-				_ = ws.WriteCloseMessage(internal.ProtocolError, err.Error())
+				log.Printf("WebSocket read failed: %v", err)
 				return
 			}
 		case internal.OpBinary:
 			log.Println("Received op binary")
-			fmt.Println(frame)
 			err = ws.WriteBinaryMessage(frame)
 			if err != nil {
-				_ = ws.WriteCloseMessage(internal.ProtocolError, err.Error())
+				log.Printf("WebSocket read failed: %v", err)
 				return
 			}
-		case internal.OpClose:
-			_ = ws.CloseWithCode(internal.NormalClosure, "Connection closed")
-			log.Println("Received op close")
-			return
 		}
 
 	}
