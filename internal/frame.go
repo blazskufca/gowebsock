@@ -9,36 +9,59 @@ import (
 	"math"
 )
 
+// Opcode is a 4 bit value which indicates the type of the frame.
 type Opcode byte
 
 // WebSocket OpCodes
 const (
+	// OpContinuation indicates that frame is a part of continuation frame in a fragmented message.
 	OpContinuation Opcode = 0x0
-	OpText         Opcode = 0x1
-	OpBinary       Opcode = 0x2
-	OpClose        Opcode = 0x8
-	OpPing         Opcode = 0x9
-	OpPong         Opcode = 0xA
+	// OpText indicates that the Frame.PayloadData is a UTF-8 text data.
+	OpText Opcode = 0x1
+	// OpBinary indicates that the Frame.PayloadData is a binary payload.
+	OpBinary Opcode = 0x2
+	// OpClose indicates that the frame is a Close control frame.
+	OpClose Opcode = 0x8
+	// OpPing indicates that the frame is a Ping control frame.
+	OpPing Opcode = 0x9
+	// OpPong indicates that the frame in Pong control frame.
+	OpPong Opcode = 0xA
 )
 
 const (
-	PayloadLen16BitCode byte   = 126
-	PayloadLen64BitCode byte   = 127
-	minimalHeaderSize   int    = 2
-	firsHeaderByte      byte   = 0
-	secondHeaderByte    byte   = 1
-	maskFIN             byte   = 0b10000000
-	maskRSV1            byte   = 0b01000000
-	maskRSV2            byte   = 0b00100000
-	maskRSV3            byte   = 0b00010000
-	maskOPCODE          byte   = 0b00001111
-	maskPayloadMasked   byte   = maskFIN
+	// PayloadLen16BitCode indicates that the real payload length are the next 2 bytes
+	PayloadLen16BitCode byte = 126
+	// PayloadLen64BitCode indicates that the real payload length are the next 8 bytes
+	PayloadLen64BitCode byte = 127
+	// minimalHeaderSize is the minimal size for a valid websocket frame, which is 2 bytes. Frame might be bigger.
+	minimalHeaderSize int = 2
+	// firsHeaderByte is a index into a first byte of the websocket Frame.
+	firsHeaderByte byte = 0
+	// secondHeaderByte is a index into a second byte of the websocket Frame.
+	secondHeaderByte byte = 1
+	// maskFIN is a mask for operating with Frame.Fin bit.
+	maskFIN byte = 0b10000000
+	// maskRSV1 is a mask for operating with Frame.Rsv1.
+	maskRSV1 byte = 0b01000000
+	// maskRSV2 is a mask for operating with Frame.Rsv2.
+	maskRSV2 byte = 0b00100000
+	// maskRSV3 is a mask for operating with Frame.Rsv3.
+	maskRSV3 byte = 0b00010000
+	// maskOPCODE is a mask for operating with Frame.OpCode.
+	maskOPCODE byte = 0b00001111
+	// maskPayloadMasked is a mask for operating with Frame.Masked.
+	maskPayloadMasked byte = maskFIN
+	// payloadLen125OrLess is a constant which compares Frame.PayloadData length.
 	payloadLen125OrLess uint64 = 125
-	uint16byteSize      int    = 2
-	uint64ByteSize      int    = 8
-	maskKeySize         int    = 4
+	// uint16byteSize is a size of uint16 in bytes. 2 bytes or 16 bits.
+	uint16byteSize int = 2
+	// uint64ByteSize is a size of uint64 in bytes. 8 bytes or 64 bits.
+	uint64ByteSize int = 8
+	// maskKeySize is a size of a masking keys. 4 bytes.
+	maskKeySize int = 4
 )
 
+// WebSocketStatusCode is a status code in a Close control frame.
 type WebSocketStatusCode uint16
 
 const (
@@ -85,15 +108,15 @@ const (
 
 // Frame represents a WebSocket protocol frame as defined in RFC 6455
 type Frame struct {
-	Fin           bool
-	Rsv1          bool
-	Rsv2          bool
-	Rsv3          bool
-	OpCode        Opcode
-	Masked        bool
-	PayloadLength uint64
-	MaskingKey    [4]byte
-	PayloadData   []byte
+	Fin           bool    // Fin indicates that frame is Finish frame, last Frame in a message.
+	Rsv1          bool    // Rsv1 is the first Websocket extension bit.
+	Rsv2          bool    // Rsv2 is the second Websocket extension bit.
+	Rsv3          bool    // Rsv3 is the third Websocket extension bit.
+	OpCode        Opcode  // OpCode is Opcode 4 bit value which indicates the type of the Frame.
+	Masked        bool    // Masked indicates the the Frame.PayloadData is masked with a Frame.MaskingKey.
+	PayloadLength uint64  // PayloadLength is a variable (7 / 7+16 if PayloadLen16BitCode / 7+64 if PayloadLen64BitCode)
+	MaskingKey    [4]byte // MaskingKey is a 4 byte value which Frame.PayloadData is masked if Frame.Masked bit is set.
+	PayloadData   []byte  // PayloadData is a variable length byte slice. Websocket supports this to be OpText or OpBinary.
 }
 
 // NewFrame creates a new WebSocket frame with the specified parameters
@@ -146,8 +169,8 @@ func (f *Frame) UnmaskPayload() {
 	f.MaskPayload()
 }
 
-// EncodeFrame serializes a frame to its wire format
-func (f *Frame) EncodeFrame() []byte {
+// MarshalBinary serializes a frame to its wire format. It fulfils encoding.BinaryMarshaler interface.
+func (f *Frame) MarshalBinary() ([]byte, error) {
 	headerSize := minimalHeaderSize
 
 	if f.PayloadLength <= payloadLen125OrLess {
@@ -206,7 +229,7 @@ func (f *Frame) EncodeFrame() []byte {
 	payloadPos := headerSize
 	copy(buf[payloadPos:], f.PayloadData)
 
-	return buf
+	return buf, nil
 }
 
 // DecodeFrame deserializes a frame from its wire format

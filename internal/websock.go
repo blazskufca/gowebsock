@@ -102,7 +102,10 @@ func (ws *WebSocket) Handshake(r *http.Request) error {
 // WriteFrames encodes and writes a sequence of frames
 func (ws *WebSocket) WriteFrames(frames []*Frame) error {
 	for _, frame := range frames {
-		encoded := frame.EncodeFrame()
+		encoded, err := frame.MarshalBinary()
+		if err != nil {
+			return err
+		}
 		if _, err := ws.buff.Write(encoded); err != nil {
 			return err
 		}
