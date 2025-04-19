@@ -1,0 +1,29 @@
+run:
+  tests: true
+
+linters:
+  disable-all: false
+  enable:
+    - govet
+    - gosec
+    - staticcheck
+
+  disable: []
+
+linters-settings:
+  govet:
+    enable-all: true
+
+  gosec:
+    includes:
+      - G101-G704
+
+  staticcheck:
+    checks: ["all"]
+
+issues:
+  include-tests: true
+
+  max-issues-per-linter: 0
+
+  max-same-issues: 0

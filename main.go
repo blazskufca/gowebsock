@@ -56,10 +56,6 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
-
-	// Clean up connection if loop exits abnormally
-	_ = ws.CloseWithCode(internal.GoingAway, "Closed loop")
-	log.Println("WebSocket connection closed")
 }
 
 func main() {
@@ -72,7 +68,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(testClientHTML))
+		_, _ = w.Write([]byte(testClientHTML))
 	})
 
 	port := 8080

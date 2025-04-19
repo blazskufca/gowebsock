@@ -108,15 +108,15 @@ const (
 
 // Frame represents a WebSocket protocol frame as defined in RFC 6455
 type Frame struct {
-	Fin           bool    // Fin indicates that frame is Finish frame, last Frame in a message.
-	Rsv1          bool    // Rsv1 is the first Websocket extension bit.
-	Rsv2          bool    // Rsv2 is the second Websocket extension bit.
-	Rsv3          bool    // Rsv3 is the third Websocket extension bit.
-	OpCode        Opcode  // OpCode is Opcode 4 bit value which indicates the type of the Frame.
-	Masked        bool    // Masked indicates the the Frame.PayloadData is masked with a Frame.MaskingKey.
-	PayloadLength uint64  // PayloadLength is a variable (7 / 7+16 if PayloadLen16BitCode / 7+64 if PayloadLen64BitCode)
-	MaskingKey    [4]byte // MaskingKey is a 4 byte value which Frame.PayloadData is masked if Frame.Masked bit is set.
-	PayloadData   []byte  // PayloadData is a variable length byte slice. Websocket supports this to be OpText or OpBinary.
+	PayloadData   []byte
+	PayloadLength uint64
+	MaskingKey    [4]byte
+	OpCode        Opcode
+	Fin           bool
+	Rsv1          bool
+	Rsv2          bool
+	Rsv3          bool
+	Masked        bool
 }
 
 // NewFrame creates a new WebSocket frame with the specified parameters
@@ -215,7 +215,7 @@ func (f *Frame) MarshalBinary() ([]byte, error) {
 	}
 
 	if f.Masked {
-		maskPos := 2
+		var maskPos int
 		if f.PayloadLength <= payloadLen125OrLess {
 			maskPos = 2
 		} else if f.PayloadLength <= math.MaxUint16 {
