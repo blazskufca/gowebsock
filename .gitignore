@@ -254,4 +254,4 @@ modules.xml
 
 # End of https://www.toptal.com/developers/gitignore/api/goland,goland+iml,goland+all,go
 
-/autobahn/reports
+/_autobahn/reports

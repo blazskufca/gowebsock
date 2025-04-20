@@ -1,4 +1,4 @@
-package internal
+package frames
 
 import (
 	"encoding/binary"
@@ -43,7 +43,7 @@ func NewPingFrame(applicationData string, isClient bool) (*Frame, error) {
 		return nil, errors.New("ping frame application data must be valid UTF-8")
 	}
 
-	if len(applicationData) > int(payloadLen125OrLess) {
+	if len(applicationData) > int(PayloadLen125OrLess) {
 		return nil, errors.New("ping frame payload cannot exceed 125 bytes")
 	}
 	payload := []byte(applicationData)
@@ -117,7 +117,7 @@ func (f *Frame) ReadPingFrame() (string, error) {
 		return "", errors.New("ping frame contains invalid UTF-8 in application data")
 	}
 
-	if len(f.PayloadData) > int(payloadLen125OrLess) {
+	if len(f.PayloadData) > int(PayloadLen125OrLess) {
 		return "", errors.New("ping frame payload exceeds maximum allowed length of 125 bytes")
 	}
 
@@ -142,7 +142,7 @@ func (f *Frame) ReadPongFrame() (string, error) {
 		return "", errors.New("pong frame contains invalid UTF-8 in application data")
 	}
 
-	if len(f.PayloadData) > int(payloadLen125OrLess) {
+	if len(f.PayloadData) > int(PayloadLen125OrLess) {
 		return "", errors.New("pong frame payload exceeds maximum allowed length of 125 bytes")
 	}
 

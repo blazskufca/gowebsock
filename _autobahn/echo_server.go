@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/blazskufca/gowebsock/internal"
+	"github.com/blazskufca/gowebsock/frames"
+	"github.com/blazskufca/gowebsock/websock"
 	"log"
 	"net/http"
 )
@@ -11,7 +12,7 @@ import (
 func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request headers:", r.Header)
 
-	ws, err := internal.NewWebSocketWithUpgrade(w, r)
+	ws, err := websock.NewWebSocketWithUpgrade(w, r)
 	if err != nil {
 		log.Printf("WebSocket upgrade failed: %v", err)
 		http.Error(w, "WebSocket upgrade failed", http.StatusBadRequest)
@@ -26,7 +27,7 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch t {
-		case internal.OpText:
+		case frames.OpText:
 			log.Println("Received op text")
 			log.Println(frame)
 			err = ws.WriteTextMessage(string(frame))
@@ -34,7 +35,7 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("WebSocket read failed: %v", err)
 				return
 			}
-		case internal.OpBinary:
+		case frames.OpBinary:
 			log.Println("Received op binary")
 			err = ws.WriteBinaryMessage(frame)
 			if err != nil {

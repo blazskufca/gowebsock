@@ -1,4 +1,4 @@
-package internal
+package frames
 
 import (
 	"errors"

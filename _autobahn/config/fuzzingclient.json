@@ -2,7 +2,7 @@
   "outdir": "./reports/servers",
   "servers": [
     {
-      "url": "ws://172.17.0.1:8080/echo"
+      "url": "ws://host.docker.internal:8080/echo"
     }
   ],
   "cases": ["*"],

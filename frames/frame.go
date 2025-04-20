@@ -1,4 +1,4 @@
-package internal
+package frames
 
 import (
 	"crypto/rand"
@@ -52,7 +52,7 @@ const (
 	// maskPayloadMasked is a mask for operating with Frame.Masked.
 	maskPayloadMasked byte = maskFIN
 	// payloadLen125OrLess is a constant which compares Frame.PayloadData length.
-	payloadLen125OrLess uint64 = 125
+	PayloadLen125OrLess uint64 = 125
 	// uint16byteSize is a size of uint16 in bytes. 2 bytes or 16 bits.
 	uint16byteSize int = 2
 	// uint64ByteSize is a size of uint64 in bytes. 8 bytes or 64 bits.
@@ -173,7 +173,7 @@ func (f *Frame) UnmaskPayload() {
 func (f *Frame) MarshalBinary() ([]byte, error) {
 	headerSize := minimalHeaderSize
 
-	if f.PayloadLength <= payloadLen125OrLess {
+	if f.PayloadLength <= PayloadLen125OrLess {
 	} else if f.PayloadLength <= math.MaxUint16 {
 		headerSize += uint16byteSize
 	} else {
@@ -204,7 +204,7 @@ func (f *Frame) MarshalBinary() ([]byte, error) {
 		buf[secondHeaderByte] |= maskPayloadMasked
 	}
 
-	if f.PayloadLength <= payloadLen125OrLess {
+	if f.PayloadLength <= PayloadLen125OrLess {
 		buf[secondHeaderByte] |= byte(f.PayloadLength)
 	} else if f.PayloadLength <= math.MaxUint16 {
 		buf[secondHeaderByte] |= PayloadLen16BitCode
@@ -216,7 +216,7 @@ func (f *Frame) MarshalBinary() ([]byte, error) {
 
 	if f.Masked {
 		var maskPos int
-		if f.PayloadLength <= payloadLen125OrLess {
+		if f.PayloadLength <= PayloadLen125OrLess {
 			maskPos = 2
 		} else if f.PayloadLength <= math.MaxUint16 {
 			maskPos = 4
@@ -257,7 +257,7 @@ func DecodeFrame(r io.Reader) (*Frame, error) {
 	payloadLenIndicator := header[secondHeaderByte] & 0b01111111
 
 	switch {
-	case payloadLenIndicator <= byte(payloadLen125OrLess):
+	case payloadLenIndicator <= byte(PayloadLen125OrLess):
 		frame.PayloadLength = uint64(payloadLenIndicator)
 	case payloadLenIndicator == PayloadLen16BitCode:
 		extendedLen := make([]byte, uint16byteSize)
