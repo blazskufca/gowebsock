@@ -1,0 +1,253 @@
+{
+   "agent": "GoWebSock",
+   "behavior": "OK",
+   "behaviorClose": "OK",
+   "case": 51,
+   "closedByMe": true,
+   "createStats": true,
+   "createWirelog": true,
+   "description": "Send text Message fragmented into 2 fragments, one ping with payload in-between. Octets are sent in frame-wise chops.",
+   "droppedByMe": false,
+   "duration": 2,
+   "expectation": "A pong is received, then the message is echo'ed back to us.",
+   "expected": {
+      "OK": [
+         [
+            "pong",
+            "ping payload"
+         ],
+         [
+            "message",
+            "fragment1fragment2",
+            false
+         ]
+      ]
+   },
+   "expectedClose": {
+      "closeCode": [
+         1000
+      ],
+      "closedByMe": true,
+      "requireClean": true
+   },
+   "failedByMe": false,
+   "httpRequest": "GET /echo HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/0.8.2-0.10.9\r\nHost: host.docker.internal:8080\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 5P44MlvNPEqsbDJ/iTvFUg==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: DO7PY0orMu+7z8tBbnsQ+VvAdTk=\r\nSec-WebSocket-Version: 13\r\nServer: GoWebSock\r\nUpgrade: websocket\r\n\r\n",
+   "id": "5.7",
+   "isServer": false,
+   "localCloseCode": 1000,
+   "localCloseReason": null,
+   "received": [
+      [
+         "pong",
+         "ping payload"
+      ],
+      [
+         "message",
+         "fragment1fragment2",
+         false
+      ]
+   ],
+   "remoteCloseCode": 1000,
+   "remoteCloseReason": null,
+   "reportCompressionRatio": false,
+   "reportTime": false,
+   "result": "Actual events match at least one expected.",
+   "resultClose": "Connection was properly closed",
+   "rxFrameStats": {
+      "1": 1,
+      "8": 1,
+      "10": 1
+   },
+   "rxOctetStats": {
+      "4": 1,
+      "14": 1,
+      "20": 1,
+      "175": 1
+   },
+   "started": "2025-04-20T09:27:29.634Z",
+   "trafficStats": null,
+   "txFrameStats": {
+      "0": 1,
+      "1": 1,
+      "8": 1,
+      "9": 1
+   },
+   "txOctetStats": {
+      "8": 1,
+      "15": 2,
+      "18": 1,
+      "255": 1
+   },
+   "wasClean": true,
+   "wasCloseHandshakeTimeout": false,
+   "wasNotCleanReason": null,
+   "wasOpenHandshakeTimeout": false,
+   "wasServerConnectionDropTimeout": false,
+   "wirelog": [
+      [
+         "TO",
+         [
+            255,
+            "474554202f6563686f20485454502f312e310d0a557365722d4167656e743a204175746f6261686e5465737453756974652f302e382e322d302e31302e390d0a ..."
+         ],
+         false
+      ],
+      [
+         "RO",
+         [
+            175,
+            "485454502f312e312031303120537769746368696e672050726f746f636f6c730d0a436f6e6e656374696f6e3a20557067726164650d0a5365632d576562536f ..."
+         ]
+      ],
+      [
+         "TF",
+         [
+            9,
+            "fragment1"
+         ],
+         1,
+         false,
+         0,
+         "6c8fd7e1",
+         null,
+         null,
+         true
+      ],
+      [
+         "TO",
+         [
+            15,
+            "01896c8fd7e10afdb68601eab9955d"
+         ],
+         true
+      ],
+      [
+         "TF",
+         [
+            12,
+            "ping payload"
+         ],
+         9,
+         true,
+         0,
+         "25589b70",
+         null,
+         null,
+         true
+      ],
+      [
+         "TF",
+         [
+            9,
+            "fragment2"
+         ],
+         0,
+         true,
+         0,
+         "f059263e",
+         null,
+         null,
+         true
+      ],
+      [
+         "TI",
+         1
+      ],
+      [
+         "TO",
+         [
+            18,
+            "898c25589b705531f5170528fa094937fa14"
+         ],
+         true
+      ],
+      [
+         "TO",
+         [
+            15,
+            "8089f059263e962b47599d3c484ac2"
+         ],
+         true
+      ],
+      [
+         "RO",
+         [
+            14,
+            "8a0c70696e67207061796c6f6164"
+         ]
+      ],
+      [
+         "RF",
+         [
+            12,
+            "ping payload"
+         ],
+         10,
+         true,
+         0,
+         false,
+         null
+      ],
+      [
+         "RO",
+         [
+            20,
+            "8112667261676d656e7431667261676d656e7432"
+         ]
+      ],
+      [
+         "RF",
+         [
+            18,
+            "fragment1fragment2"
+         ],
+         1,
+         true,
+         0,
+         false,
+         null
+      ],
+      [
+         "TF",
+         [
+            2,
+            "0x03e8"
+         ],
+         8,
+         true,
+         0,
+         "daf596d4",
+         null,
+         null,
+         false
+      ],
+      [
+         "TO",
+         [
+            8,
+            "8882daf596d4d91d"
+         ],
+         false
+      ],
+      [
+         "RO",
+         [
+            4,
+            "880203e8"
+         ]
+      ],
+      [
+         "RF",
+         [
+            2,
+            "0x03e8"
+         ],
+         8,
+         true,
+         0,
+         false,
+         null
+      ]
+   ]
+}
