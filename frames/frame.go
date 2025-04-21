@@ -28,6 +28,25 @@ const (
 	OpPong Opcode = 0xA
 )
 
+func (op Opcode) String() string {
+	switch op {
+	case OpContinuation:
+		return "OpCode_Continuation"
+	case OpText:
+		return "OpCode_Text"
+	case OpBinary:
+		return "OpCode_Binary"
+	case OpClose:
+		return "OpCode_Close"
+	case OpPing:
+		return "OpCode_Ping"
+	case OpPong:
+		return "OpCode_Pong"
+	default:
+		return fmt.Sprintf("Unknown OpCode_%v", int(op))
+	}
+}
+
 const (
 	// PayloadLen16BitCode indicates that the real payload length are the next 2 bytes
 	PayloadLen16BitCode byte = 126
@@ -105,6 +124,39 @@ const (
 	// to a failure to perform a TLS handshake (e.g., the server certificate can't be verified).
 	Reserved1015 WebSocketStatusCode = 1015
 )
+
+func (status WebSocketStatusCode) String() string {
+	switch status {
+	case NormalClosure:
+		return "NormalClosure"
+	case GoingAway:
+		return "GoingAway"
+	case ProtocolError:
+		return "ProtocolError"
+	case GotUnacceptableData:
+		return "GotUnacceptableData"
+	case Reserved1004:
+		return "Reserved1004"
+	case NoStatusCode1005:
+		return "NoStatusCode1005"
+	case NoStatusCode1006:
+		return "NoStatusCode1006"
+	case GotInconsistentData:
+		return "GotInconsistentData"
+	case ViolatesPolicy:
+		return "ViolatesPolicy"
+	case MessageTooBig:
+		return "MessageTooBig"
+	case FailedToNegotiateExtensions:
+		return "FailedToNegotiateExtensions"
+	case UnexpectedServerCondition:
+		return "UnexpectedServerCondition"
+	case Reserved1015:
+		return "Reserved1015"
+	default:
+		return fmt.Sprintf("Unknown WebSocketStatusCode_%v", int(status))
+	}
+}
 
 // Frame represents a WebSocket protocol frame as defined in RFC 6455
 type Frame struct {
